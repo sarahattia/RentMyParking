@@ -1,0 +1,7 @@
+{
+    "AppSyncApiName": "sceappmain",
+    "DynamoDBBillingMode": "PAY_PER_REQUEST",
+    "DynamoDBEnableServerSideEncryption": false,
+    "S3DeploymentBucket": "amplify-sceappmain-dev-ea2a8-deployment",
+    "S3DeploymentRootKey": "amplify-appsync-files/1ed31fa9638f931d9bfe8b947211016acdcaba3d"
+}
