@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import { RadioButton, Checkbox } from 'react-native-paper';
+import { doc, getDoc, updateDoc, collection, onSnapshot, query, where } from 'firebase/firestore'; 
+import { db } from '../firebaseConfig';
+import { useRoute } from '@react-navigation/native';
 
 const PersonalAccount = () => {
-  const [reservationRequests, setReservationRequests] = useState([
-    { id: 1, name: 'Reservation 1', note: '' },
-    { id: 2, name: 'Reservation 2', note: '' },
-  ]);
+  const route = useRoute();
+  const { userID } = route.params || {};
 
+  const [reservationRequests, setReservationRequests] = useState([]);
+  const [pastRequests, setPastRequests] = useState([]);
+  const [userData, setUserData] = useState(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [password, setPassword] = useState('');
@@ -20,16 +24,148 @@ const PersonalAccount = () => {
   const [isElectricalCharge, setIsElectricalCharge] = useState(false);
   const [note, setNote] = useState('');
 
-  const handleAccept = (requestId) => {
-    const note = reservationRequests.find(req => req.id === requestId).note;
-    if (note === '') {
+  useEffect(() => {
+    if (userID) {
+      const unsubscribeUser = onSnapshot(doc(db, 'Users', userID), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setUserData(data);
+          setFirstName(data.firstName || '');
+          setLastName(data.lastName || '');
+          setPassword('');
+          setUser(data.user || 'to rent');
+          setParkAddress(data.parkAddress || '');
+          setStreetNumber(data.streetNumber || '');
+          setCity(data.city || '');
+          setSizeOfPark(data.sizeOfPark || '');
+          setHowToOpenPark(data.howToOpenPark || '');
+          setIsElectricalCharge(data.isElectricalCharge || false);
+          setNote(data.note || '');
+        } else {
+          console.log('No such document!');
+        }
+      });
+
+      const unsubscribeRequests = onSnapshot(
+        query(
+          collection(db, 'ReservationRequests'),
+          where('status', '==', 'pending'),
+          where('ownerID', '==', userID)
+        ),
+        async (querySnapshot) => {
+          const newRequests = [];
+          try {
+            for (const docSnap of querySnapshot.docs) {
+              const requestData = docSnap.data();
+              
+              if (requestData.requesterID) {
+                const requesterDoc = await getDoc(doc(db, 'Users', requestData.requesterID));
+                const requesterData = requesterDoc.data();
+                
+                newRequests.push({
+                  id: docSnap.id,
+                  ...requestData,
+                  firstName: requesterData?.firstName,
+                  lastName: requesterData?.lastName
+                });
+              } else {
+                newRequests.push({
+                  id: docSnap.id,
+                  ...requestData,
+                  firstName: 'Unknown',
+                  lastName: 'Unknown'
+                });
+              }
+            }
+            setReservationRequests(newRequests);
+          } catch (error) {
+            console.error('Error retrieving reservation requests or user data:', error);
+          }
+        }
+      );
+
+      const unsubscribePastRequests = onSnapshot(
+        query(
+          collection(db, 'ReservationRequests'),
+          where('status', 'in', ['accepted', 'rejected']),
+          where('requesterID', '==', userID)
+        ),
+        async (querySnapshot) => {
+          const pastRequests = [];
+          try {
+            for (const docSnap of querySnapshot.docs) {
+              const requestData = docSnap.data();
+              
+              if (requestData.requesterID) {
+                const requesterDoc = await getDoc(doc(db, 'Users', requestData.requesterID));
+                const requesterData = requesterDoc.data();
+                
+                pastRequests.push({
+                  id: docSnap.id,
+                  ...requestData,
+                  firstName: requesterData?.firstName,
+                  lastName: requesterData?.lastName
+                });
+              } else {
+                pastRequests.push({
+                  id: docSnap.id,
+                  ...requestData,
+                  firstName: 'Unknown',
+                  lastName: 'Unknown'
+                });
+              }
+            }
+            setPastRequests(pastRequests);
+          } catch (error) {
+            console.error('Error retrieving past reservation requests or user data:', error);
+          }
+        }
+      );
+
+      return () => {
+        unsubscribeUser();
+        unsubscribeRequests();
+        unsubscribePastRequests();
+      };
+    }
+  }, [userID]);
+
+  const handleAccept = async (requestId) => {
+    const request = reservationRequests.find(req => req.id === requestId);
+    
+    if (!request) {
+      Alert.alert('Error', 'Request not found.');
+      return;
+    }
+  
+    if (request.note === '') {
       Alert.alert('Please enter a note for the client.');
     } else {
-      Alert.alert('Reservation accepted', `Note: ${note}`);
+      try {
+        await updateDoc(doc(db, 'ReservationRequests', requestId), {
+          note: request.note,
+          status: 'accepted'
+        });
+  
+        const userRef = doc(db, 'Users', userID);
+        await updateDoc(userRef, {
+          available: false
+        });
+  
+        Alert.alert('Reservation accepted', `Note: ${request.note}`);
+        
+        setReservationRequests(prevRequests =>
+          prevRequests.map(req =>
+            req.id === requestId ? { ...req, status: 'accepted' } : req
+          )
+        );
+      } catch (error) {
+        console.error('Error updating reservation request or user data:', error);
+      }
     }
   };
 
-  const handleReject = (requestId) => {
+  const handleReject = async (requestId) => {
     Alert.alert(
       'Confirm Rejection',
       'Are you sure you want to reject this reservation?',
@@ -38,76 +174,132 @@ const PersonalAccount = () => {
         {
           text: 'Reject',
           style: 'destructive',
-          onPress: () => Alert.alert('Reservation rejected'),
+          onPress: async () => {
+            Alert.alert('Reservation rejected');
+            await updateReservationRequestStatus(requestId, 'rejected');
+          },
         },
       ]
     );
   };
 
+  const updateReservationRequestStatus = async (requestId, status) => {
+    try {
+      await updateDoc(doc(db, 'ReservationRequests', requestId), {
+        status: status,
+      });
+
+      setReservationRequests(prevRequests =>
+        prevRequests.map(req =>
+          req.id === requestId ? { ...req, status } : req
+        )
+      );
+    } catch (error) {
+      console.error('Error updating reservation request status: ', error);
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    if (userID) {
+      const updatedFields = {};
+  
+      if (firstName !== userData.firstName) updatedFields.firstName = firstName;
+      if (lastName !== userData.lastName) updatedFields.lastName = lastName;
+      if (password) updatedFields.Password = password; 
+      if (user !== userData.userType) updatedFields.userType = user;
+      if (parkAddress !== userData.parkAddress) updatedFields.parkAddress = parkAddress;
+      if (streetNumber !== userData.streetNumber) updatedFields.streetNumber = streetNumber;
+      if (city !== userData.city) updatedFields.city = city;
+      if (sizeOfPark !== userData.sizeOfPark) updatedFields.sizeOfPark = sizeOfPark;
+      if (howToOpenPark !== userData.howToOpenPark) updatedFields.howToOpenPark = howToOpenPark;
+      if (isElectricalCharge !== userData.isElectricalCharge) updatedFields.isElectricalCharge = isElectricalCharge;
+      if (note !== userData.note) updatedFields.note = note;
+  
+      if (Object.keys(updatedFields).length > 0) {
+        const docRef = doc(db, 'Users', userID);
+        await updateDoc(docRef, updatedFields);
+  
+        Alert.alert('Changes saved successfully!');
+      } else {
+        Alert.alert('No changes detected.');
+      }
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Personal Account</Text>
-
+      
       <View style={styles.requestSection}>
-        <Text style={styles.sectionTitle}>Reservation Requests</Text>
-        {reservationRequests.map((request) => (
-          <View key={request.id} style={styles.requestItem}>
-            <Text style={styles.requestText}>{request.name}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter a note for the client"
-              value={request.note}
-              onChangeText={(text) =>
-                setReservationRequests((prevRequests) =>
-                  prevRequests.map((req) =>
-                    req.id === request.id ? { ...req, note: text } : req
-                  )
-                )
-              }
-            />
-            <View style={styles.requestButtons}>
+        <Text style={styles.sectionTitle}>New Reservation Requests</Text>
+        {reservationRequests.length > 0 ? (
+          reservationRequests.map((request) => (
+            <View key={request.id} style={styles.requestItem}>
+              <Text>{request.firstName} {request.lastName} wants to rent your parking</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter note for client"
+                value={note}
+                onChangeText={setNote}
+              />
               <TouchableOpacity
-                style={styles.acceptButton}
+                style={styles.button}
                 onPress={() => handleAccept(request.id)}
               >
                 <Text style={styles.buttonText}>Accept</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.rejectButton}
+                style={[styles.button, styles.rejectButton]}
                 onPress={() => handleReject(request.id)}
               >
                 <Text style={styles.buttonText}>Reject</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        ))}
+          ))
+        ) : (
+          <Text>No pending requests</Text>
+        )}
       </View>
-
-      <View style={styles.formSection}>
-        <Text style={styles.sectionTitle}>Modify Personal Information</Text>
-
+      
+      <View style={styles.requestSection}>
+        <Text style={styles.sectionTitle}>Past Reservation Requests</Text>
+        {pastRequests.length > 0 ? (
+          pastRequests.map((request) => (
+            <View key={request.id} style={styles.requestItem}>
+              <Text>{request.firstName} {request.lastName} {request.status === 'accepted' ? 'accepted your reservation' : 'rejected your reservation'}</Text>
+              {request.note && <Text>Note: {request.note}</Text>}
+            </View>
+          ))
+        ) : (
+          <Text>No past requests</Text>
+        )}
+      </View>
+      
+      <View style={styles.formContainer}>
+        <Text style={styles.label}>First Name</Text>
         <TextInput
           style={styles.input}
-          placeholder="First Name"
           value={firstName}
-          onChangeText={(text) => setFirstName(text)}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Last Name"
-          value={lastName}
-          onChangeText={(text) => setLastName(text)}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          secureTextEntry
-          value={password}
-          onChangeText={(text) => setPassword(text)}
+          onChangeText={setFirstName}
         />
 
-        <View style={styles.radioGroup}>
-          <Text style={styles.optionLabel}>User:</Text>
+        <Text style={styles.label}>Last Name</Text>
+        <TextInput
+          style={styles.input}
+          value={lastName}
+          onChangeText={setLastName}
+        />
+
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
+
+<View style={styles.radioGroup}>
+          <Text style={styles.optionLabel}>User Type:</Text>
 
           <View style={styles.radioItem}>
             <RadioButton
@@ -264,7 +456,7 @@ const PersonalAccount = () => {
           </View>
         )}
 
-        <TouchableOpacity style={styles.button}>
+        <TouchableOpacity style={styles.button} onPress={handleSaveChanges}>
           <Text style={styles.buttonText}>Save Changes</Text>
         </TouchableOpacity>
       </View>
@@ -282,6 +474,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
+    color: '#FFA500',
   },
   requestSection: {
     marginBottom: 30,
@@ -290,6 +483,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 10,
+    color:'#FFA500',
   },
   requestItem: {
     backgroundColor: '#fff',
@@ -308,13 +502,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   input: {
+    height: 40,
+    width: '80%',
+    borderColor: '#FFA500',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    marginBottom: 15,
-    backgroundColor: '#fff',
+    marginBottom: 10,
+    paddingLeft: 10,
+    borderRadius: 5,
+    backgroundColor: 'white',
+    color: '#FFA500',
   },
   requestButtons: {
     flexDirection: 'row',
@@ -337,6 +533,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  
   formSection: {
     backgroundColor: '#fff',
     padding: 20,
@@ -346,6 +543,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 2,
+  },
+  input: {
+    height: 40,
+    width: '80%',
+    borderColor: '#FFA500',
+    borderWidth: 1,
+    marginBottom: 10,
+    paddingLeft: 10,
+    borderRadius: 5,
+    backgroundColor: 'white',
+    color: '#FFA500',
   },
   radioGroup: {
     marginBottom: 15,
@@ -376,7 +584,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });
 
 export default PersonalAccount;
-

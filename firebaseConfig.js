@@ -1,8 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
-
-
 const firebaseConfig = {
   apiKey: "AIzaSyC-kNMK09BV0KhK-K2Wah7TaEoAns4i68Q",
   authDomain: "rentmyparking-2a775.firebaseapp.com",
@@ -14,15 +12,6 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-//const auth = getAuth(app);
 const db = getFirestore(app);
- // Initialiser l'authentification
 
-// Connecter aux émulateurs en mode développement
-//if (__DEV__) {
- // connectFirestoreEmulator(db, 'localhost', 8080);
- // connectAuthEmulator(auth, 'http://localhost:9099'); // Connecter l'authentification à l'émulateur si nécessaire
-//}
-
-
-export {  db };
+export { db };

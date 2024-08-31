@@ -110,6 +110,7 @@ export default function SignUpPage({ navigation }) {
         howToOpenPark,
         isElectricalCharge,
         note,
+        available: true,
       });
       
       console.log('User added with ID: ', docRef.id);

@@ -3,16 +3,17 @@ import { View, Text, TouchableOpacity, Alert, StyleSheet, ScrollView, Linking } 
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { RadioButton } from 'react-native-paper';
-import axios from 'axios';
-
-const GOOGLE_MAPS_API_KEY = 'AIzaSyATIT0OmRrgvC5iKf_2UP-HqN1Qb6SbwVE';
+import { collection, addDoc,updateDoc,doc } from 'firebase/firestore'; 
+import { db } from '../firebaseConfig';
 
 const PaymentScreen = ({ route, navigation }) => {
+  const {selectedAddress, userID } = route.params;
   const [location, setLocation] = useState(null);
   const [mapRegion, setMapRegion] = useState(null);
-  const [selectedAddress, setSelectedAddress] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [errorMsg, setErrorMsg] = useState(null);
+  
+  console.log(selectedAddress);
 
   useEffect(() => {
     (async () => {
@@ -30,13 +31,27 @@ const PaymentScreen = ({ route, navigation }) => {
         latitudeDelta: 0.0922,
         longitudeDelta: 0.0421,
       });
-
-      const { selectedAddress } = route.params;
-      setSelectedAddress(selectedAddress);
     })();
-  }, [route.params]);
+  }, []);
 
-  const handleConfirm = () => {
+
+  const updateParkingAvailability = async () => {
+    if (selectedAddress.id) {
+      try {
+        await updateDoc(doc(db, 'Users', selectedAddress.id), {
+          available: false
+        });
+      } catch (e) {
+        console.error('Error updating parking availability:', e);
+      }
+    }
+  };
+
+
+  const handleConfirm = async () => {
+
+    if (paymentMethod === 'bit' || paymentMethod === 'paybox') {
+      await updateParkingAvailability();
     if (paymentMethod === 'bit') {
       const bitPayUrl = 'https://www.bitpay.co.il/he';
       Linking.openURL(bitPayUrl).catch((err) => {
@@ -47,9 +62,27 @@ const PaymentScreen = ({ route, navigation }) => {
       Linking.openURL(payboxUrl).catch((err) => {
         console.error('Failed to open Paybox:', err);
       });
+
+      
     } else {
-      Alert.alert('Wait the owner answer.');
-    }
+      if (selectedAddress.id) {
+        try {
+          await addDoc(collection(db, 'ReservationRequests'), {
+            requesterID: userID,
+            ownerID: selectedAddress.id,
+            parkAddress: selectedAddress.name,
+            status: 'pending',
+            timestamp: new Date(),
+          });
+
+          Alert.alert('Reservation Request Sent', 'The owner will be notified.');
+        } catch (e) {
+          console.error('Error adding document: ', e);
+        }
+      } else {
+        Alert.alert('Error', 'No owner ID provided.');
+      }
+    }}
   };
 
   const handleGoToPark = () => {
@@ -119,6 +152,7 @@ const PaymentScreen = ({ route, navigation }) => {
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {

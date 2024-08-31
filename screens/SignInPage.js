@@ -32,7 +32,10 @@ export default function SignInPage({ navigation }) {
 
       if (password === storedPassword) {
         Alert.alert('Sign in successful!');
-        navigation.navigate('Main');
+        
+        const userID = querySnapshot.docs[0].id; 
+        navigation.navigate('Main', {userID});
+
       } else {
         Alert.alert('Invalid password!');
       }
@@ -111,5 +114,4 @@ const styles = StyleSheet.create({
     color: '#FFA500',
     textDecorationLine: 'underline',
   },
-
 });
