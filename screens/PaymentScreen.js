@@ -63,7 +63,7 @@ const PaymentScreen = ({ route, navigation }) => {
         console.error('Failed to open Paybox:', err);
       });
 
-      
+    } 
     } else {
       if (selectedAddress.id) {
         try {
@@ -82,7 +82,7 @@ const PaymentScreen = ({ route, navigation }) => {
       } else {
         Alert.alert('Error', 'No owner ID provided.');
       }
-    }}
+    }
   };
 
   const handleGoToPark = () => {

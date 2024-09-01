@@ -243,7 +243,7 @@ const PersonalAccount = () => {
                 onChangeText={setNote}
               />
               <TouchableOpacity
-                style={styles.button}
+                style={[styles.button, styles.acceptButton]}
                 onPress={() => handleAccept(request.id)}
               >
                 <Text style={styles.buttonText}>Accept</Text>
