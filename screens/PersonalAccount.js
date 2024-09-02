@@ -23,6 +23,7 @@ const PersonalAccount = () => {
   const [howToOpenPark, setHowToOpenPark] = useState('');
   const [isElectricalCharge, setIsElectricalCharge] = useState(false);
   const [note, setNote] = useState('');
+  const [reservationNote, setReservationNote] = useState('');
 
   useEffect(() => {
     if (userID) {
@@ -137,13 +138,15 @@ const PersonalAccount = () => {
       Alert.alert('Error', 'Request not found.');
       return;
     }
-  
-    if (request.note === '') {
+  console.log(reservationNote);
+    if (request.reservationNote === '') {
       Alert.alert('Please enter a note for the client.');
     } else {
+      console.log('Request ID:', requestId);
+console.log('Note:', reservationNote);
       try {
         await updateDoc(doc(db, 'ReservationRequests', requestId), {
-          note: request.note,
+          note: reservationNote,
           status: 'accepted'
         });
   
@@ -152,7 +155,7 @@ const PersonalAccount = () => {
           available: false
         });
   
-        Alert.alert('Reservation accepted', `Note: ${request.note}`);
+        Alert.alert('Reservation accepted', `Note: ${request.reservationNote}`);
         
         setReservationRequests(prevRequests =>
           prevRequests.map(req =>
@@ -239,8 +242,8 @@ const PersonalAccount = () => {
               <TextInput
                 style={styles.input}
                 placeholder="Enter note for client"
-                value={note}
-                onChangeText={setNote}
+                value={reservationNote}
+                onChangeText={setReservationNote}
               />
               <TouchableOpacity
                 style={[styles.button, styles.acceptButton]}
@@ -266,8 +269,8 @@ const PersonalAccount = () => {
         {pastRequests.length > 0 ? (
           pastRequests.map((request) => (
             <View key={request.id} style={styles.requestItem}>
-              <Text>{request.firstName} {request.lastName} {request.status === 'accepted' ? 'accepted your reservation' : 'rejected your reservation'}</Text>
-              {request.note && <Text>Note: {request.note}</Text>}
+              <Text> {request.status === 'accepted' ? 'Your reservation is accepted' : 'Your reservation is rejected'}</Text>
+              {request.reservationNote && <Text>Note: {request.reservationNote}</Text>}
             </View>
           ))
         ) : (

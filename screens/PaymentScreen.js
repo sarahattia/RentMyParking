@@ -73,6 +73,7 @@ const PaymentScreen = ({ route, navigation }) => {
             parkAddress: selectedAddress.name,
             status: 'pending',
             timestamp: new Date(),
+            note:'',
           });
 
           Alert.alert('Reservation Request Sent', 'The owner will be notified.');
